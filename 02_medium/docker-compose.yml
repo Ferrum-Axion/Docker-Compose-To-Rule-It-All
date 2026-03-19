@@ -1,0 +1,58 @@
+services:
+  proxy:                                                                                                                 
+    image: nginx:alpine                                                                                                               
+    container_name: proxy-nginx                                                                                                         
+    networks:
+      - frontend
+    ports:                                                                                                                       
+      - 80:80                                                                                                    
+    volumes:                                                                                                                     
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      nodejs-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nodejs-server:                                                                                                                 
+    build: .                                                                                                            
+    container_name: nodejs-server                                                                                                                                                                                                            
+    networks:
+      - frontend
+      - backend
+    env_file:                                                                                                 
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:                                                                                              
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 || exit 1"]                                        
+      interval: 5s                                                                                            
+      timeout: 5s                                             
+      retries: 5
+
+  db:                                                                                                                 
+    image: postgres:15-alpine                                                                                                               
+    container_name: postgres_data_for_node_js                                                                                                         
+    networks:
+      - backend
+    ports:                                                                                                                       
+      - 5432:5432                                                                                                   
+    env_file:                                                                                                 
+      - .env
+    volumes:   
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:                                                                                              
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]                                   
+      interval: 5s                                                                                            
+      timeout: 5s                                                                                             
+      retries: 5                                                    
+
+
+volumes:   
+  postgres_data:   
+networks:
+  frontend:
+  backend:
+    internal: true
