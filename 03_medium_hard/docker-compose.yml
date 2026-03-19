@@ -1,0 +1,115 @@
+services:
+  proxy:
+    image: nginx:alpine
+    container_name: nginx_proxy
+    volumes:
+    ports:
+      - "80:80"
+    networks:
+      - frontend
+
+  
+  api:
+    build: Dockerfile.api
+    container_name: api_server_js
+    networks:
+      - backend
+      - frontend
+    environment:
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+
+  
+  db:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - pg_volume:/var/lib/postgresql/data
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  cache:
+    image: redis:7-alpine
+    container_name: redis
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  
+  worker1:
+    build: Dockerfile.worker
+    networks:
+      - backend
+    environment:
+      DB_HOST: db
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    depends_on:
+      - db
+      - cache
+
+  worker2:
+    build: Dockerfile.worker
+    networks:
+      - backend
+    environment:
+      DB_HOST: db
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    depends_on:
+      - db
+      - cache    
+
+volumes:
+  pg_volume:
+
+networks:
+  backend:
+    internal: true
+  frontend:
+    driver: bridge
