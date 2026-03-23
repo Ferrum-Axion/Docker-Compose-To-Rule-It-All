@@ -1,0 +1,13 @@
+# Only contains dev-specific overrides
+# Merged automatically with docker-compose.yml when running "docker compose up"
+
+services:
+  nodejs-api:
+    build: .
+    ports:
+      - 3000:3000
+    volumes:
+      - ./src:/app/src
+
+  worker:
+    build: .

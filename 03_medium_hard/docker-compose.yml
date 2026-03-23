@@ -1,0 +1,129 @@
+# DOCKER COMPOSE PRODUCTION BASE
+services:
+
+  proxy:
+    image: nginx:alpine
+    container_name: proxy-nginx
+    networks:
+      - frontend
+    ports:
+      - 80:80
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      nodejs-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nodejs-api:
+    image: nodejs-api:latest
+    container_name: nodejs-api
+    networks:
+      - frontend
+      - backend
+    env_file:
+      - .env
+    secrets:
+      - db_password
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  db:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    networks:
+      - backend
+    env_file:
+      - .env
+    secrets:
+      - db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  cache:
+    image: redis:7-alpine
+    container_name: redis-cache
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  worker:
+    image: nodejs-api:latest
+    command: ["node", "worker.js"]
+    networks:
+      - backend
+    env_file:
+      - .env
+    secrets:
+      - db_password
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  flower:
+    image: mher/flower:2.0 # prod will always use image.
+    container_name: flower
+    profiles:
+      - monitoring
+    networks:
+      - backend
+    ports:
+      - 5555:5555
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5555 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+networks:
+  frontend:
+  backend:
+    internal: true
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
